@@ -19,6 +19,7 @@
 - `service_catalog` has no client write path at all in this pass (seeded via migration).
 - Xendit integration targets **test/sandbox mode only** — `XENDIT_SECRET_KEY` and `XENDIT_WEBHOOK_TOKEN` are set from the user's existing sandbox keys via `npx supabase secrets set`.
 - Xendit's own docs disagree with each other on the exact Payment Requests response/webhook field names across product generations (verified during design research — see spec's Open Items). Code that parses Xendit responses is written defensively (multiple known field paths) and the raw payload is always persisted to `wallet_transactions.xendit_raw_response` so nothing is lost if a field name turns out wrong — Task 8 is a real sandbox smoke test that will surface any mismatch before this ships.
+- This project's `config.toml` leaves `auto_expose_new_tables` unset (current default), so RLS policies alone do NOT grant access — every table needs an explicit base `grant select/insert/update/delete ... to authenticated` (and `anon` for public-browse tables) alongside its RLS policies, or `authenticated` gets a permission-denied error before RLS is even evaluated. Discovered and fixed during Task 1 (commit 5a8d73c); every later task's SQL in this plan already includes the needed grants.
 
 ---
 
@@ -255,6 +256,11 @@ alter table public.service_catalog enable row level security;
 create policy "service_catalog_select_all" on public.service_catalog
   for select using (true);
 
+-- RLS policies alone don't grant access on this project: config.toml's
+-- auto_expose_new_tables is unset (the current default), so a role needs an
+-- explicit base-table GRANT before its RLS policies get a chance to apply.
+grant select on public.service_catalog to anon, authenticated;
+
 create table public.barbers (
   id uuid primary key references public.profiles(id) on delete cascade,
   nik text,
@@ -276,6 +282,8 @@ create policy "barbers_select_own" on public.barbers
 
 create policy "barbers_update_own" on public.barbers
   for update using (auth.uid() = id) with check (auth.uid() = id);
+
+grant select on public.barbers to authenticated;
 
 -- RLS makes the row visible for UPDATE, but only these columns are actually
 -- writable by the barber — verification_status/mode_muslimah_status/credit_balance_cents
@@ -333,6 +341,9 @@ create policy "services_select_all" on public.services
 create policy "services_write_own" on public.services
   for all using (auth.uid() = barber_id) with check (auth.uid() = barber_id);
 
+grant select on public.services to anon, authenticated;
+grant insert, update, delete on public.services to authenticated;
+
 create table public.barber_service_areas (
   barber_id uuid not null references public.barbers(id) on delete cascade,
   kelurahan text not null,
@@ -346,6 +357,9 @@ create policy "areas_select_all" on public.barber_service_areas
 
 create policy "areas_write_own" on public.barber_service_areas
   for all using (auth.uid() = barber_id) with check (auth.uid() = barber_id);
+
+grant select on public.barber_service_areas to anon, authenticated;
+grant insert, update, delete on public.barber_service_areas to authenticated;
 ```
 
 - [ ] **Step 3: Add seed data**
@@ -469,6 +483,8 @@ create policy "bookings_select_party" on public.bookings
 create policy "bookings_insert_customer" on public.bookings
   for insert with check (auth.uid() = customer_id);
 
+grant select, insert on public.bookings to authenticated;
+
 create or replace function public.fn_transition_booking(p_booking_id uuid, p_new_status text)
 returns public.bookings
 language plpgsql
@@ -551,6 +567,8 @@ alter table public.booking_ratings enable row level security;
 
 create policy "ratings_select_party" on public.booking_ratings
   for select using (auth.uid() = customer_id or auth.uid() = barber_id);
+
+grant select on public.booking_ratings to authenticated;
 
 create or replace function public.fn_submit_rating(p_booking_id uuid, p_stars integer, p_comment text)
 returns public.booking_ratings
@@ -701,6 +719,8 @@ alter table public.wallet_transactions enable row level security;
 
 create policy "wallet_tx_select_own" on public.wallet_transactions
   for select using (auth.uid() = barber_id);
+
+grant select on public.wallet_transactions to authenticated;
 
 create or replace function public.fn_complete_booking(p_booking_id uuid)
 returns public.bookings
