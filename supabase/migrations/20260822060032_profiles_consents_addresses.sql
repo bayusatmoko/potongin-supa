@@ -85,6 +85,8 @@ create policy "addresses_update_own" on public.addresses
 create policy "addresses_delete_own" on public.addresses
   for delete using (auth.uid() = profile_id);
 
-grant select, update on public.profiles to authenticated;
+grant select on public.profiles to authenticated;
+revoke update on public.profiles from authenticated;
+grant update (full_name, avatar_url, gender) on public.profiles to authenticated;
 grant select, insert on public.user_consents to authenticated;
 grant select, insert, update, delete on public.addresses to authenticated;

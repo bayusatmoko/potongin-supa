@@ -1,5 +1,5 @@
 begin;
-select plan(6);
+select plan(7);
 
 insert into auth.users (id, email) values
   ('11111111-1111-1111-1111-111111111111', 'cust@test.dev'),
@@ -30,6 +30,12 @@ select results_eq(
   $$ select count(*)::int from public.addresses where profile_id = '11111111-1111-1111-1111-111111111111' $$,
   $$ values (1) $$,
   'a user can insert their own address'
+);
+
+select throws_ok(
+  $$ update public.profiles set role = 'barber' where id = '11111111-1111-1111-1111-111111111111' $$,
+  'permission denied for table profiles',
+  'authenticated user cannot update role column (prevents self-escalation)'
 );
 
 select * from finish();
