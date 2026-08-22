@@ -731,6 +731,7 @@ as $$
 declare
   v_booking public.bookings;
   v_fee integer;
+  v_balance integer;
   v_new_balance integer;
 begin
   select * into v_booking from public.bookings where id = p_booking_id for update;
@@ -740,7 +741,13 @@ begin
 
   v_fee := round(v_booking.price_cents * 0.05);
 
-  if (select credit_balance_cents from public.barbers where id = v_booking.barber_id) < v_fee then
+  -- `for update` locks the barbers row here, before the check, so a second
+  -- concurrent fn_complete_booking call for the same barber blocks until this
+  -- one commits and then re-checks against the true post-decrement balance —
+  -- without the lock, both calls could pass the check against the same
+  -- stale balance and jointly drive it negative.
+  select credit_balance_cents into v_balance from public.barbers where id = v_booking.barber_id for update;
+  if v_balance < v_fee then
     raise exception 'insufficient credit balance for the app fee';
   end if;
 
