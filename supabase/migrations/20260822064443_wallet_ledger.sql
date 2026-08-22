@@ -30,6 +30,7 @@ as $$
 declare
   v_booking public.bookings;
   v_fee integer;
+  v_balance integer;
   v_new_balance integer;
 begin
   select * into v_booking from public.bookings where id = p_booking_id for update;
@@ -39,7 +40,8 @@ begin
 
   v_fee := round(v_booking.price_cents * 0.05);
 
-  if (select credit_balance_cents from public.barbers where id = v_booking.barber_id) < v_fee then
+  select credit_balance_cents into v_balance from public.barbers where id = v_booking.barber_id for update;
+  if v_balance < v_fee then
     raise exception 'insufficient credit balance for the app fee';
   end if;
 
