@@ -77,7 +77,7 @@ begin
 
   elsif p_new_status = 'cancelled' then
     if v_caller not in (v_booking.customer_id, v_booking.barber_id)
-       or v_booking.status in ('in_progress','completed','cancelled','paid_confirmed','rated') then
+       or v_booking.status not in ('requested','accepted','en_route','arrived') then
       raise exception 'not allowed';
     end if;
     update public.bookings set status = 'cancelled', cancelled_at = now() where id = p_booking_id returning * into v_booking;
