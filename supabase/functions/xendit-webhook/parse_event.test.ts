@@ -20,3 +20,12 @@ Deno.test("ignores an unrecognized event", () => {
   const body = { event: "something.else", data: { id: "pr-4", reference_id: "tx-4", status: "PENDING" } };
   assertEquals(parseTopupEvent(body), { referenceId: "tx-4", paymentRequestId: "pr-4", outcome: "ignored" });
 });
+
+Deno.test("handles a literal null body without throwing", () => {
+  assertEquals(parseTopupEvent(null), { referenceId: null, paymentRequestId: null, outcome: "ignored" });
+});
+
+Deno.test("handles a body with data explicitly null without throwing", () => {
+  const body = { event: "payment_request.succeeded", data: null };
+  assertEquals(parseTopupEvent(body), { referenceId: null, paymentRequestId: null, outcome: "succeeded" });
+});

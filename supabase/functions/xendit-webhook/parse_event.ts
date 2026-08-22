@@ -6,10 +6,14 @@ export interface ParsedTopupEvent {
   outcome: TopupOutcome;
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 export function parseTopupEvent(body: unknown): ParsedTopupEvent {
-  const root = body as Record<string, unknown>;
+  const root = isObject(body) ? body : {};
   const eventName = typeof root.event === "string" ? root.event : "";
-  const data = (root.data ?? root) as Record<string, unknown>;
+  const data = isObject(root.data) ? root.data : root;
 
   const referenceId = (data.referenceId as string | undefined) ?? (data.reference_id as string | undefined) ?? null;
   const paymentRequestId = (data.id as string | undefined) ?? (data.payment_request_id as string | undefined) ?? null;
