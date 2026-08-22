@@ -1440,10 +1440,13 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ received: true, note: "no reference_id, ignored" }), { status: 200 });
   }
 
-  await adminClient
+  const { error: rawResponseError } = await adminClient
     .from("wallet_transactions")
     .update({ xendit_raw_response: body })
     .eq("id", event.referenceId);
+  if (rawResponseError) {
+    console.error("failed to persist raw webhook payload", event.referenceId, rawResponseError);
+  }
 
   if (event.outcome === "succeeded") {
     const { error } = await adminClient.rpc("fn_credit_topup", { p_transaction_id: event.referenceId });
@@ -1452,11 +1455,14 @@ Deno.serve(async (req) => {
       return new Response("internal error", { status: 500 });
     }
   } else if (event.outcome === "expired" || event.outcome === "failed") {
-    await adminClient
+    const { error: statusUpdateError } = await adminClient
       .from("wallet_transactions")
       .update({ status: event.outcome })
       .eq("id", event.referenceId)
       .eq("status", "pending");
+    if (statusUpdateError) {
+      console.error("failed to mark wallet_transactions row", event.outcome, event.referenceId, statusUpdateError);
+    }
   }
 
   return new Response(JSON.stringify({ received: true }), { status: 200 });
