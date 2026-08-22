@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { extractQrDetails } from "./extract_qr_details.ts";
+import { buildPaymentRequestPayload } from "./build_payment_request.ts";
 
 const XENDIT_SECRET_KEY = Deno.env.get("XENDIT_SECRET_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -66,16 +67,7 @@ Deno.serve(async (req) => {
         "api-version": "2024-11-11",
         Authorization: `Basic ${btoa(`${XENDIT_SECRET_KEY}:`)}`,
       },
-      body: JSON.stringify({
-        amount: body.amount_cents,
-        currency: "IDR",
-        referenceId: tx.id,
-        paymentMethod: {
-          type: "QR_CODE",
-          reusability: "ONE_TIME_USE",
-          qrCode: { channelCode: "QRIS" },
-        },
-      }),
+      body: JSON.stringify(buildPaymentRequestPayload(tx.id, body.amount_cents)),
     });
     xenditBody = await xenditResponse.json();
   } catch (err) {
