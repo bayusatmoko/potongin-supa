@@ -1182,37 +1182,55 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "could not start top-up" }), { status: 500 });
   }
 
-  const xenditResponse = await fetch("https://api.xendit.co/v3/payment_requests", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-version": "2024-11-11",
-      Authorization: `Basic ${btoa(`${XENDIT_SECRET_KEY}:`)}`,
-    },
-    body: JSON.stringify({
-      amount: body.amount_cents,
-      currency: "IDR",
-      referenceId: tx.id,
-      paymentMethod: {
-        type: "QR_CODE",
-        reusability: "ONE_TIME_USE",
-        qrCode: { channelCode: "QRIS" },
+  let xenditResponse: Response;
+  let xenditBody: unknown;
+  try {
+    xenditResponse = await fetch("https://api.xendit.co/v3/payment_requests", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-version": "2024-11-11",
+        Authorization: `Basic ${btoa(`${XENDIT_SECRET_KEY}:`)}`,
       },
-    }),
-  });
-  const xenditBody = await xenditResponse.json();
+      body: JSON.stringify({
+        amount: body.amount_cents,
+        currency: "IDR",
+        referenceId: tx.id,
+        paymentMethod: {
+          type: "QR_CODE",
+          reusability: "ONE_TIME_USE",
+          qrCode: { channelCode: "QRIS" },
+        },
+      }),
+    });
+    xenditBody = await xenditResponse.json();
+  } catch (err) {
+    // Network failure or a non-JSON body (e.g. a gateway error page) both land
+    // here — without this, the pending row above would never be reconciled.
+    const { error: markFailedError } = await adminClient
+      .from("wallet_transactions")
+      .update({ status: "failed" })
+      .eq("id", tx.id);
+    if (markFailedError) {
+      console.error("failed to mark wallet_transactions row failed after xendit call error", tx.id, markFailedError, err);
+    }
+    return new Response(JSON.stringify({ error: "could not reach xendit, try again" }), { status: 502 });
+  }
 
   if (!xenditResponse.ok) {
-    await adminClient
+    const { error: updateError } = await adminClient
       .from("wallet_transactions")
       .update({ status: "failed", xendit_raw_response: xenditBody })
       .eq("id", tx.id);
+    if (updateError) {
+      console.error("failed to persist xendit failure response", tx.id, updateError);
+    }
     return new Response(JSON.stringify({ error: "xendit rejected the top-up request" }), { status: 502 });
   }
 
   const { qrString, paymentRequestId, expiresAt } = extractQrDetails(xenditBody);
 
-  await adminClient
+  const { error: updateError } = await adminClient
     .from("wallet_transactions")
     .update({
       xendit_payment_request_id: paymentRequestId,
@@ -1221,6 +1239,9 @@ Deno.serve(async (req) => {
       xendit_raw_response: xenditBody,
     })
     .eq("id", tx.id);
+  if (updateError) {
+    console.error("failed to persist xendit success response", tx.id, updateError);
+  }
 
   if (!qrString || !paymentRequestId) {
     return new Response(JSON.stringify({ error: "top-up created but QR code was not returned, try again" }), { status: 502 });
