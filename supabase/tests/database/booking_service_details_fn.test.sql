@@ -1,5 +1,5 @@
 begin;
-select plan(3);
+select plan(5);
 
 insert into auth.users (id, email, phone, raw_user_meta_data) values
   ('11112222-1111-1111-1111-111111111111', 'cust5@test.dev', '+6281200000001', '{"role":"customer"}'),
@@ -47,6 +47,28 @@ select throws_ok(
   $$ select public.fn_get_booking_service_details('66667777-1111-1111-1111-111111111111') $$,
   'not allowed',
   'a different barber cannot read this booking''s customer details'
+);
+
+reset role;
+update public.bookings set status = 'declined' where id = '66667777-1111-1111-1111-111111111111';
+set local role authenticated;
+set local "request.jwt.claims" to '{"sub":"22221111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select results_eq(
+  $$ select customer_phone from public.fn_get_booking_service_details('66667777-1111-1111-1111-111111111111') $$,
+  $$ values (null::text) $$,
+  'phone remains masked when booking is declined'
+);
+
+reset role;
+update public.bookings set status = 'cancelled' where id = '66667777-1111-1111-1111-111111111111';
+set local role authenticated;
+set local "request.jwt.claims" to '{"sub":"22221111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select results_eq(
+  $$ select customer_phone from public.fn_get_booking_service_details('66667777-1111-1111-1111-111111111111') $$,
+  $$ values (null::text) $$,
+  'phone remains masked when booking is cancelled'
 );
 
 select * from finish();

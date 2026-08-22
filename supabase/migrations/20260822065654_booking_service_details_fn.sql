@@ -22,7 +22,7 @@ begin
   return query
   select
     p.full_name,
-    case when v_booking.status = 'requested' then null else p.phone end,
+    case when v_booking.status in ('requested','declined','cancelled') then null else p.phone end,
     a.detail,
     a.kelurahan,
     a.kecamatan,
