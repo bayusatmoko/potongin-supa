@@ -1360,6 +1360,15 @@ Deno.test("ignores an unrecognized event", () => {
   const body = { event: "something.else", data: { id: "pr-4", reference_id: "tx-4", status: "PENDING" } };
   assertEquals(parseTopupEvent(body), { referenceId: "tx-4", paymentRequestId: "pr-4", outcome: "ignored" });
 });
+
+Deno.test("handles a literal null body without throwing", () => {
+  assertEquals(parseTopupEvent(null), { referenceId: null, paymentRequestId: null, outcome: "ignored" });
+});
+
+Deno.test("handles a body with data explicitly null without throwing", () => {
+  const body = { event: "payment_request.succeeded", data: null };
+  assertEquals(parseTopupEvent(body), { referenceId: null, paymentRequestId: null, outcome: "succeeded" });
+});
 ```
 
 - [ ] **Step 6: Run the test and confirm it fails**
@@ -1380,10 +1389,14 @@ export interface ParsedTopupEvent {
   outcome: TopupOutcome;
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 export function parseTopupEvent(body: unknown): ParsedTopupEvent {
-  const root = body as Record<string, unknown>;
+  const root = isObject(body) ? body : {};
   const eventName = typeof root.event === "string" ? root.event : "";
-  const data = (root.data ?? root) as Record<string, unknown>;
+  const data = isObject(root.data) ? root.data : root;
 
   const referenceId = (data.referenceId as string | undefined) ?? (data.reference_id as string | undefined) ?? null;
   const paymentRequestId = (data.id as string | undefined) ?? (data.payment_request_id as string | undefined) ?? null;
@@ -1401,7 +1414,7 @@ export function parseTopupEvent(body: unknown): ParsedTopupEvent {
 - [ ] **Step 8: Run the test and confirm it passes**
 
 Run: `deno test supabase/functions/xendit-webhook/parse_event.test.ts`
-Expected: 4 passed
+Expected: 6 passed
 
 - [ ] **Step 9: Write the HTTP handler**
 
